@@ -33,3 +33,7 @@ libraryDependencies ++= Seq(
 
 enablePlugins(ScalaKataPlugin)
 securityManager in Backend := false
+timeout in Backend := {
+  import scala.concurrent.duration._
+  1.minute
+}
