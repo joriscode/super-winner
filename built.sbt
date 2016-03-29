@@ -27,8 +27,8 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka"      %% "akka-http-experimental"            % "2.4.2",
   "com.typesafe.akka"      %% "akka-http-spray-json-experimental" % "2.4.2",
   "com.propensive"         %% "rapture-xml"                       % "2.0.0-M5",
-  "com.lihaoyi"            %% "pprint"                            % "0.3.8"
-
+  "com.lihaoyi"            %% "pprint"                            % "0.3.8",
+  "me.tongfei"              % "progressbar"                       % "0.4.0"
 )
 
 enablePlugins(ScalaKataPlugin)

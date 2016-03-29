@@ -1,3 +1,5 @@
+import me.tongfei.progressbar._
+
 import akka.http.scaladsl.model._
 import Uri._
 import akka.http.scaladsl.model.headers._
@@ -12,6 +14,8 @@ import akka.stream.ActorMaterializer
 import akka.actor.ActorSystem
 
 import scala.concurrent.Future
+import scala.concurrent.Await
+import scala.concurrent.duration.Duration
 import scala.util.{Success, Failure, Try}
 
 object BintrayFlow extends BintrayProtocol {
@@ -28,7 +32,7 @@ object BintrayFlow extends BintrayProtocol {
     // password = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
     val home = System.getProperty("user.home")
-    val path = home + "/.bintray/.credentials"
+    val path = home + "/.bintray/.credentials2"
     val nl = System.lineSeparator
     val source = io.Source.fromFile(path)
 
@@ -64,6 +68,8 @@ object BintrayFlow extends BintrayProtocol {
     ))
   }
 
+  val progress = new ProgressBar("List POMs", 0)
+
   // Find the pom total count
   private def search0 = {
     val totalHeader = "X-RangeLimit-Total"
@@ -72,35 +78,30 @@ object BintrayFlow extends BintrayProtocol {
     )
   }
   
-  // XXX: logic atMost
-  private def searchRequests(atMost: Option[Int]) =
+  private val perRequest = 50
+  private def searchRequests =
     Source.fromFuture(search0).flatMapConcat{totalPoms =>
+      progress.start()
+      progress.maxHint(totalPoms)
       
-      val perRequest = 50
-      def floor(v: Int) = Math.floor(v.toDouble / perRequest.toDouble).toInt
-      val requestCount = floor(totalPoms)
-      val atMostTotal = atMost.map(floor)
-      val atMostRequestCount = atMost.map(v => Math.min(v, requestCount)).getOrElse(requestCount)
-
-      val out =
-        Source((0 to atMostRequestCount).map(i => 
-          cachedWithoutAuthorization(withAuthorization(search(i * 50)))
-        ))
-
-      atMost.map(c => out.take(c)).getOrElse(out)
+      val requestCount = Math.floor(totalPoms.toDouble / perRequest.toDouble).toInt
+      Source((0 to requestCount).map(i => 
+        cachedWithoutAuthorization(withAuthorization(search(i * 50)))
+      ))
     }
   
   // https pipeline & json extraction
-  def listPoms(atMost: Option[Int]) =
-    searchRequests(atMost)
+  def listPoms =
+    searchRequests
       .via(bintrayHttpFlow)
       .mapAsync(1){
-        case (Success(r), _) => Unmarshal(r.entity).to[List[BintraySearch]].map(_.toSet)
+        case (Success(r), _) => {
+          progress.stepBy(perRequest)
+          Unmarshal(r.entity).to[List[BintraySearch]].map(_.toSet)
+        }
         case (Failure(e), _) => Future.failed(e)
       }.mapConcat(identity)
 
-  // for debug purpose
-  def runListPoms(atMost: Option[Int]) = 
-    listPoms(atMost).runFold(Set.empty[BintraySearch])((acc, v) => acc + v)
-  
+  def run(): Unit =
+    Await.result(listPoms.runForeach(_ => ()), Duration.Inf)
 }
